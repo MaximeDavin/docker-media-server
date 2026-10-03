@@ -1,0 +1,63 @@
+# Tiles link to the public hostname; widgets talk to the container directly.
+# That split matters: the public URL of an admin app would bounce a guest into
+# the OIDC gate and fail, while the widget still needs real data from it.
+#
+# So nothing here hrefs to sonarr/radarr even though both are read for the
+# queue - a guest clicking through would only hit a permission error.
+
+- Watch:
+    - Jellyfin:
+        href: https://movies.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Films and series
+        icon: jellyfin.png
+        siteMonitor: https://movies.{{HOMEPAGE_VAR_DOMAIN}}
+
+    - Request something:
+        href: https://request.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Ask for a film or a series
+        icon: overseerr.png
+        widget:
+          type: seerr
+          url: http://seerr:5055
+          key: {{HOMEPAGE_VAR_SEERR_KEY}}
+
+- Read:
+    - Komga:
+        href: https://komga.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Comics and manga
+        icon: komga.png
+        siteMonitor: https://komga.{{HOMEPAGE_VAR_DOMAIN}}
+
+    - Calibre:
+        href: https://calibre.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Books
+        icon: calibre-web.png
+        siteMonitor: https://calibre.{{HOMEPAGE_VAR_DOMAIN}}
+
+- On the way:
+    # What is downloading right now, so nobody has to ask whether their request
+    # is moving. enableQueue turns the tile into a list with progress and time
+    # left rather than a bare count.
+    #
+    # These read the *arr queues rather than qbittorrent on purpose: the arr
+    # queue is titles and episodes, while the torrent client is release names
+    # and trackers.
+    - Series:
+        href: https://request.{{HOMEPAGE_VAR_DOMAIN}}/requests
+        description: Episodes downloading now
+        icon: sonarr.png
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: {{HOMEPAGE_VAR_SONARR_KEY}}
+          enableQueue: true
+
+    - Films:
+        href: https://request.{{HOMEPAGE_VAR_DOMAIN}}/requests
+        description: Films downloading now
+        icon: radarr.png
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: {{HOMEPAGE_VAR_RADARR_KEY}}
+          enableQueue: true

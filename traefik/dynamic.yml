@@ -1,0 +1,130 @@
+# Traefik dynamic configuration: the edge auth middlewares.
+#
+# This replaced tinyauth. Instead of a forward-auth sidecar with its own user
+# file, Traefik itself is now an OIDC relying party against Rauthy
+# (id.<domain>), so there is exactly one account store and Google login
+# works everywhere. The protected apps stay untouched - none of them learns
+# about OIDC, they just never see a request that did not pass through here.
+#
+# Why a file and not container labels: the plugin block is long, nested and
+# shared by every protected router, and the two ${...} secrets stay out of git
+# this way (Traefik reads them from its own env, fed from .env).
+#
+# Routers reference these as `oidc-admin@file` / `oidc-user@file`. The `@file`
+# suffix is NOT optional: a bare `oidc-admin` is looked up in the docker
+# provider, is not found, and the router goes into error state (404) instead of
+# authenticating anything.
+# Adding a host to either middleware is only half the job. Rauthy validates
+# redirect_uri against an explicit allowlist on the `traefik` client, so a new
+# gated hostname ALSO needs
+#
+#   https://<host>.<domain>/oidc/callback   in redirect_uris
+#   https://<host>.<domain>/*               in post_logout_redirect_uris
+#
+# Without it the browser reaches Rauthy and bounces straight back with a bare
+# 400 and "Invalid redirect uri" in rauthy's log - nothing in traefik's log
+# says anything is wrong, which is what makes it a slow one to find.
+#
+# Read or edit the list with the API key in ~/.config/rauthy/api-key:
+#   curl -H "Authorization: API-Key $(cat ~/.config/rauthy/api-key)" \
+#        https://id.<domain>/auth/v1/clients/traefik
+# GET it, add the two entries, PUT the whole object back - a PUT replaces it,
+# so send every field that came out of the GET.
+http:
+  middlewares:
+
+    # Any account Rauthy is willing to log in - no group required. This is the
+    # one to use for an app that has no auth of its own but that everyone in
+    # the household may use.
+    oidc-user:
+      plugin:
+        traefik-oidc-auth: &oidc
+          Secret: "${OIDC_COOKIE_SECRET}"
+          Provider: &oidcProvider
+            # Public URL on purpose. The browser-facing endpoints come out of
+            # the discovery document either way, and Traefik carries the
+            # `id.<domain>` alias on `web`, so this resolves to Traefik
+            # itself over the bridge and never leaves the host.
+            Url: "https://id.{{ env "DOMAIN" }}/auth/v1"
+            ClientId: "traefik"
+            ClientSecret: "${OIDC_CLIENT_SECRET}"
+          # `groups` is what the admin rule below asserts on. Rauthy only puts
+          # the claim in the token when the client is allowed that scope AND
+          # asks for it, so removing it here silently breaks oidc-admin.
+          Scopes: ["openid", "profile", "email", "groups"]
+          TokenValidation: IdToken
+          # Default is /logout, which several of the protected apps (Sonarr,
+          # Radarr) already use for their own session. Moved out of the way so
+          # the middleware cannot shadow an upstream route.
+          LogoutUri: "/oidc/logout"
+          # Browser requests get redirected to Rauthy, XHR gets a plain 401
+          # rather than an HTML login page it cannot follow.
+          UnauthenticatedBehavior: Auto
+
+    # Authenticated AND in the `admin` group. Everything tinyauth used to gate.
+    oidc-admin:
+      plugin:
+        traefik-oidc-auth:
+          # Same provider block as above; only the authorization rule differs.
+          <<: *oidc
+          Authorization: &adminAuthz
+            AssertClaims:
+              - Name: groups
+                AnyOf: ["admin"]
+            # Without this the claim check runs once at login and is cached for
+            # the life of the session. Re-checking costs nothing (it reads the
+            # token already in the session) and means dropping someone from
+            # `admin` in Rauthy takes effect at the next token renewal instead
+            # of whenever they happen to log out.
+            CheckOnEveryRequest: true
+
+    # oidc-admin, plus the identity of whoever got through, forwarded upstream
+    # as a header. Same gate - the app behind it just also learns *who* is
+    # knocking, which lets it adopt the Rauthy session instead of asking for a
+    # second login of its own.
+    #
+    # Only for apps that are told to trust that header (beszel's
+    # TRUSTED_AUTH_HEADER). It is edge auth, not app auth: anything already on
+    # the `web` bridge can reach those containers on their own port and set the
+    # header itself. The header cannot be forged from a browser, though - the
+    # plugin Set()s it, so whatever the client sent is overwritten, not merged.
+    oidc-admin-identity:
+      plugin:
+        traefik-oidc-auth:
+          <<: *oidc
+          # Overrides the merged Provider above (an explicit key beats one
+          # pulled in by <<), re-merging it so only this one field differs.
+          #
+          # The plugin builds its claim set from the ID token, and Rauthy does
+          # not put `email` there - it serves it from /userinfo. Without this
+          # the header below renders empty and beszel sees an anonymous
+          # request, which is a 401 that looks exactly like a missing header.
+          # `groups` IS in the ID token, which is why the admin assertion has
+          # always worked and hid the difference.
+          #
+          # Costs one /userinfo call per request, to Rauthy over the bridge.
+          # Fine for an admin-only tool; not something to put on a hot path.
+          Provider:
+            <<: *oidcProvider
+            UseClaimsFromUserInfo: "true"
+          Authorization: *adminAuthz
+          Headers:
+            # A Go template over the ID token's claims, evaluated by the
+            # plugin. `email` is why the `email` scope is in the shared block
+            # above - drop it there and this renders empty, which reads
+            # downstream as "nobody is logged in".
+            #
+            # The quoting is not decoration. Traefik runs EVERY dynamic config
+            # file through text/template before parsing the yaml - not just
+            # .tmpl ones - so an unescaped claim reference is evaluated here,
+            # against Traefik's own (empty) context, and the whole file dies
+            # with `can't evaluate field claims in type bool`. Every middleware
+            # in it disappears at once, so that takes the admin gate off every
+            # service, not just beszel. Wrapping the reference in a string
+            # literal makes Traefik's pass emit it verbatim for the plugin.
+            #
+            # That pass reads the raw file, before the yaml parser has removed
+            # anything, so this applies to COMMENTS too - which is why none of
+            # these lines spell the reference out.
+            - Name: "X-Auth-Email"
+              Value: '{{ "{{ .claims.email }}" }}'

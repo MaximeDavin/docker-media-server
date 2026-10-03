@@ -1,0 +1,94 @@
+# The torrent client and the VPN tunnel it lives behind.
+#
+# qbittorrent joins gluetun's network namespace with
+# `network_mode: service:gluetun` rather than running the tunnel inside the
+# client, as the old binhex all-in-one image did.
+#
+# Consequences of the shared namespace, all load-bearing:
+#   - The client has no address of its own on `web`, so Traefik cannot see it.
+#     Its router/service lives on the `gluetun` labels below.
+#   - It has no DNS name of its own either. `gluetun` carries it as a network
+#     alias so `http://qbittorrent:8080` keeps resolving for the *arrs.
+#   - Recreating gluetun tears down the namespace its dependents live in. They
+#     need a restart afterwards: `docker compose up -d --force-recreate
+#     qbittorrent`. This fails closed, it does not leak.
+services:
+
+  gluetun:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: gluetun
+    image: qmcgaw/gluetun:v3
+    # NET_ADMIN + a tun device only. The binhex image this replaced ran
+    # `privileged: true`, i.e. effectively host root for an internet-facing
+    # torrent client - a far bigger exposure than the IP leak it guarded against.
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      # gluetun parses exactly five keys out of this ini file: PrivateKey and
+      # Address from [Interface], PresharedKey/PublicKey/Endpoint from [Peer].
+      # DNS, AllowedIPs, MTU and PersistentKeepalive are silently IGNORED here -
+      # they only take effect as the WIREGUARD_* env vars below. Read-only: this
+      # is a copy, the binhex original is still at ~/.config/qbittorrentvpn.
+      - ${HOME}/.config/gluetun/wg0.conf:/gluetun/wireguard/wg0.conf:ro
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: wireguard
+      # gluetun names the tunnel device `tun0` by default, even for wireguard.
+      # The client binds its sockets to `wg0` (Session\Interface in its
+      # qBittorrent.conf, carried over from binhex), and a bind to a device that
+      # does not exist means no connections at all - so pin the name instead of
+      # editing the config.
+      VPN_INTERFACE: wg0
+      # Not read from wg0.conf, so restated here to match it.
+      WIREGUARD_PERSISTENT_KEEPALIVE_INTERVAL: 25s
+      # gluetun's firewall is default-DROP: only the tunnel gets out. These two
+      # subnets are the exception, and both are required - 172.20.0.0/16 is the
+      # `web` bridge (Traefik reaching the WebUIs), 192.168.0.0/24 is the LAN.
+      FIREWALL_OUTBOUND_SUBNETS: 172.20.0.0/16,192.168.0.0/24
+      TZ: Europe/Paris
+    networks:
+      web:
+        # The client has no DNS name of its own any more (see header). This
+        # alias points its old name at the namespace holder, so existing *arr
+        # download-client settings keep working unchanged.
+        aliases:
+          - qbittorrent
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.middlewares=oidc-admin@file"
+      - "traefik.http.routers.qbittorrent.service=qbittorrent"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+      # Major-line tag: report new majors. (WUD never digest-watches a
+      # semver-looking tag, so in-major updates just arrive on the next pull.)
+      - 'wud.tag.include=^v\d+$$'
+
+  # Second line of defence, and the one that actually matters: qBittorrent.conf
+  # carries Session\Interface=wg0, so libtorrent binds its sockets to the tunnel
+  # device. If wg0 is not up, no socket opens at all - independent of gluetun's
+  # firewall. That is why gluetun above is pinned to VPN_INTERFACE: wg0.
+  qbittorrent:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: qbittorrent
+    image: ghcr.io/hotio/qbittorrent:release
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      UMASK: "002"
+      TZ: Europe/Paris
+    volumes:
+      # hotio roots the profile at /config where binhex rooted it at
+      # /config/qBittorrent, so this is the binhex tree copied up one level.
+      - ${HOME}/.config/qbittorrent:/config
+      - ${STORAGE}/data:/data

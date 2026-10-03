@@ -1,0 +1,36 @@
+# Standalone web apps with no shared dependencies.
+services:
+
+  filebrowser:
+    extends:
+      file: common/base.yml
+      service: app
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    volumes:
+      - ${STORAGE}/drive:/srv
+      - ${HOME}/.config/filebrowser/database:/database
+      - ${HOME}/.config/filebrowser/config:/config
+    labels:
+      - "traefik.enable=true"
+      # Router for api
+      - "traefik.http.routers.drive.rule=Host(`drive.${DOMAIN}`)"
+      - "traefik.http.routers.drive.middlewares=oidc-admin@file"
+
+  babybuddy:
+    extends:
+      file: common/base.yml
+      service: app
+    image: lscr.io/linuxserver/babybuddy:latest
+    container_name: babybuddy
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      CSRF_TRUSTED_ORIGINS: https://baby.${DOMAIN}
+      SECURE_PROXY_SSL_HEADER: "True"
+    volumes:
+      - ${HOME}/.config/babybuddy:/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.babybuddy.rule=Host(`baby.${DOMAIN}`)"
+      - "traefik.http.services.babybuddy.loadbalancer.server.port=8000"

@@ -1,0 +1,77 @@
+# Stacks are split by concern and pulled in below. Shared networks and volumes
+# stay here so there is exactly one definition of each.
+#
+# `project_directory: .` on every entry makes relative paths inside a stack file
+# (e.g. invidious-db's ./config/sql) resolve against this directory rather than
+# stacks/, matching the pre-split behaviour.
+#
+# Image tag policy - pick by how much an unreviewed update can break:
+#   1. Stateful, guest-facing, or with one-way migrations (jellyfin, rauthy,
+#      pihole, traefik, seerr, jfa...): exact version, or a digest when upstream
+#      publishes no versions. Majors get tested on a copy with a backup first.
+#   2. Low-risk / easily rebuilt: major-line tag where one exists (gluetun:v3,
+#      postgres:14), otherwise `latest`.
+#   3. nightly/develop only by choice (radarr, prowlarr are deliberate).
+#   4. Always an explicit tag - a bare image name is `latest` in disguise.
+# WUD (stacks/monitoring.yml) only reports. Every non-`latest` tag carries a
+# `wud.tag.include` regex for the stable release format; without it WUD sorts
+# betas and ancient unstable builds as "newer". Word tags (latest, release,
+# nightly) are digest-watched; version-shaped floating tags (v3, 14) cannot be,
+# so WUD only reports new majors for those.
+include:
+  - path: stacks/infra.yml
+    project_directory: .
+  - path: stacks/media.yml
+    project_directory: .
+  - path: stacks/arr.yml
+    project_directory: .
+  - path: stacks/download.yml
+    project_directory: .
+  - path: stacks/invidious.yml
+    project_directory: .
+  - path: stacks/apps.yml
+    project_directory: .
+  - path: stacks/monitoring.yml
+    project_directory: .
+
+networks:
+  # Subnet pinned on purpose: rauthy's `trusted_proxies` and gluetun's
+  # FIREWALL_OUTBOUND_SUBNETS both hardcode 172.20.0.0/16, and Docker's
+  # automatic 172.x allocation depends on network creation order. Left to
+  # chance, recreating `web` can hand it a different range - rauthy then stops
+  # trusting Traefik's forwarded headers and the torrent clients lose the
+  # WebUI route.
+  web:
+    name: web
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+  # Pihole only. It needs a real LAN presence for two things a bridge cannot
+  # give it: port 53, already taken on the host, and DHCP, which is broadcast.
+  # Everything else that used to sit here is on `web` behind Traefik now.
+  #
+  # /24 + explicit gateway to match the host (192.168.0.42/24 via .1); the old
+  # /16 made containers treat all of 192.168.x.x as on-link. `ip_range` keeps
+  # Docker's allocator off the router's DHCP pool - confirm .112-.127 is
+  # excluded there before adding any service without an explicit ipv4_address.
+  lan:
+    name: lan
+    driver: macvlan
+    driver_opts:
+      parent: enp0s25
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24
+          gateway: 192.168.0.1
+          ip_range: 192.168.0.112/28
+
+  invidious:
+    name: invidious
+
+volumes:
+  invidious:
+  companioncache:
+  # Traefik compiles the OIDC plugin from source on startup. Keeping the build
+  # here means a restart does not need github.com, only a version bump does.
+  traefik-plugins:

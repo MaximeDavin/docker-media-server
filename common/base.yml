@@ -1,0 +1,22 @@
+# Reusable service templates.
+#
+# This file is NOT a stack: it is never listed under `include:`, only pulled in
+# per-service via `extends:`. YAML anchors would be the obvious tool here, but
+# they do not survive an `include:` boundary (docker/compose#10912), so every
+# stack file reaches templates through `extends:` instead.
+services:
+
+  # Restart policy only. For services with bespoke identity or networking.
+  svc:
+    restart: unless-stopped
+
+  # Standard app: linuxserver-style identity, Paris time, on the `web` bridge
+  # so Traefik can reach it. Override any key by redeclaring it in the service.
+  app:
+    restart: unless-stopped
+    networks:
+      web: null
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: Europe/Paris

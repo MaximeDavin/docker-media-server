@@ -1,0 +1,23 @@
+# ntfy is the only service in stacks/monitoring.yml reachable without passing
+# the OIDC gate - the phone app cannot do an OIDC login - so its own auth is
+# the whole of its protection. deny-all below means an anonymous request can
+# neither read nor publish to any topic; every publisher carries a token.
+listen-http: ":2586"
+
+# Traefik terminates TLS and is the only thing talking to this, so rate limits
+# and logs must key off X-Forwarded-For rather than the bridge address that
+# every request appears to come from otherwise.
+behind-proxy: true
+
+cache-file: "/var/lib/ntfy/cache.db"
+# Long enough that a phone which was off overnight still gets the alert it
+# missed; short enough that this never becomes a database worth backing up.
+cache-duration: "24h"
+
+auth-file: "/var/lib/ntfy/auth.db"
+auth-default-access: "deny-all"
+
+# Nobody should be creating accounts here; the two that exist are made with
+# `ntfy user add` and that is deliberate.
+enable-signup: false
+enable-login: true

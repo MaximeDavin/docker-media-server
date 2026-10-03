@@ -1,0 +1,175 @@
+# Edge, identity and network infrastructure.
+services:
+
+  traefik:
+    extends:
+      file: common/base.yml
+      service: svc
+    image: "traefik:v3.7.13"
+    container_name: "traefik"
+    command:
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entryPoints.web.forwardedHeaders.insecure"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entryPoints.websecure.forwardedHeaders.insecure"
+      # Defaults for every router, so services need not repeat them. Note a
+      # router that declares its own tls block REPLACES this (no merge).
+      - "--entryPoints.websecure.asDefault=true"
+      - "--entryPoints.websecure.http.tls.certResolver=myresolver"
+      # letsecnrypt
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:?set in .env}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      # Edge auth. The middlewares themselves live in traefik/dynamic.yml; this
+      # is only the plugin Traefik has to load to understand them. The plugin is
+      # fetched from GitHub and compiled (yaegi) at startup, so a new version
+      # needs github.com reachable - the plugins volume below keeps the copy it
+      # already built, so a routine restart does not depend on that.
+      - "--experimental.plugins.traefik-oidc-auth.moduleName=github.com/sevensolutions/traefik-oidc-auth"
+      - "--experimental.plugins.traefik-oidc-auth.version=v0.21.0"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+    environment:
+      # Read by the plugin through the ${...} references in dynamic.yml, so the
+      # values never enter the repo. OIDC_CLIENT_SECRET is the secret of the
+      # `traefik` client in Rauthy; OIDC_COOKIE_SECRET is a local 32-char key
+      # that encrypts the session cookie - rotating it logs everyone out.
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:?set in .env}
+      - OIDC_COOKIE_SECRET=${OIDC_COOKIE_SECRET:?set in .env}
+      # Rendered into dynamic.yml by the file provider's {{ env "DOMAIN" }}.
+      - DOMAIN=${DOMAIN:?set in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      web:
+        aliases:
+          # Containers on the macvlan `lan` network cannot reach the host
+          # (192.168.0.42), so hairpinning through the public DNS name fails
+          # with "no route to host". This alias makes every container on `web`
+          # resolve the auth hostname straight to Traefik over the bridge.
+          - id.${DOMAIN}
+    volumes:
+      - "${HOME}/.config/letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro"
+      - "traefik-plugins:/plugins-storage"
+    labels:
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+
+  # Guest identity provider (Google SSO -> OIDC for Komga/Jellyfin/Seerr).
+  # Publicly reachable on purpose: guests must be able to log in.
+  # Config + secrets: ~/.config/rauthy/config.toml (outside this repo).
+  rauthy:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: rauthy
+    image: ghcr.io/sebadob/rauthy:0.36.2
+    user: "1000:1004"
+    volumes:
+      - ${HOME}/.config/rauthy/config.toml:/app/config.toml:ro
+      - ${HOME}/.config/rauthy/data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rauthy.rule=Host(`id.${DOMAIN}`)"
+      - "traefik.http.services.rauthy.loadbalancer.server.port=8080"
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  portal:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: portal
+    image: organizr/organizr:latest
+    environment:
+      fpm: "true" #true or false | using true will provide better performance
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${HOME}/.config/organizr:/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portal.rule=Host(`portal.${DOMAIN}`)"
+
+  # Guest dashboard - the organizr replacement. Config is four yaml files in
+  # homepage/portal/, hot-reloaded, so a tile change is an edit and a commit
+  # rather than clicking through a UI whose state lives in a volume.
+  #
+  # On home.* while organizr still holds portal.*: guests keep their existing
+  # bookmark working until this is signed off, and the cutover is then a
+  # one-line rule change plus deleting organizr.
+  homepage:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: homepage
+    image: ghcr.io/gethomepage/homepage:v2.3.0
+    user: "${PUID}:${PGID}"
+    environment:
+      # Refuses requests whose Host header is not listed - homepage's own
+      # defence against being reached by an address we did not intend.
+      - HOMEPAGE_ALLOWED_HOSTS=home.${DOMAIN},portal.${DOMAIN}
+      # Substituted into {{HOMEPAGE_VAR_*}} in homepage/portal/services.yaml,
+      # which is what keeps that file committable.
+      - HOMEPAGE_VAR_DOMAIN=${DOMAIN:?set in .env}
+      - HOMEPAGE_VAR_SONARR_KEY=${HOMEPAGE_VAR_SONARR_KEY:?set in .env}
+      - HOMEPAGE_VAR_RADARR_KEY=${HOMEPAGE_VAR_RADARR_KEY:?set in .env}
+      - HOMEPAGE_VAR_SEERR_KEY=${HOMEPAGE_VAR_SEERR_KEY:?set in .env}
+    volumes:
+      - ./homepage/portal:/app/config
+    # No docker socket, unlike the admin dashboard. This one is reachable by
+    # every household account, and nothing on it needs to know that containers
+    # exist.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage.rule=Host(`home.${DOMAIN}`)"
+      - "traefik.http.routers.homepage.middlewares=oidc-user@file"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  pihole:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: pihole
+    image: pihole/pihole:2026.07.2
+    # No `ports:` here on purpose: this container is macvlan-only, so Docker
+    # ignores port publishing entirely. It reaches the LAN on 192.168.0.113
+    # directly, which is the whole reason it is on `lan`.
+    cap_add:
+      - net_admin
+    environment:
+      - TZ=Europe/Paris
+    # Volumes store your data between container upgrades
+    volumes:
+      - '${HOME}/.config/pihole/:/etc/pihole/'
+      - '${HOME}/.config/etc-dnsmasq.d/:/etc/dnsmasq.d/'
+    networks:
+      lan:
+        ipv4_address: 192.168.0.113
+    labels:
+      - 'wud.tag.include=^\d{4}\.\d{2}\.\d+$$'
+
+  cloudflare-ddns:
+    extends:
+      file: common/base.yml
+      service: svc
+    image: timothyjmiller/cloudflare-ddns:2.0.2
+    container_name: cloudflare-ddns
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ${HOME}/.config/cloudflare-ddns/config.json:/config.json
+    labels:
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'

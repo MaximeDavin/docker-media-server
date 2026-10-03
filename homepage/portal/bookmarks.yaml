@@ -1,0 +1,16 @@
+# The app links guests keep asking for. The wider "how do I use this" writing
+# is still to be written - when it exists it becomes a page of its own, linked
+# from here, rather than more entries in this list.
+- Get the apps:
+    - Jellyfin for Windows:
+        - abbr: WIN
+          href: https://jellyfin.org/downloads/clients/
+          icon: jellyfin.png
+    - Jellyfin for TV & phone:
+        - abbr: TV
+          href: https://jellyfin.org/downloads/clients/
+          icon: jellyfin.png
+    - Komga readers:
+        - abbr: EPUB
+          href: https://komga.org/docs/category/clients/
+          icon: komga.png

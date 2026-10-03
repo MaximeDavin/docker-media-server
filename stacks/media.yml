@@ -1,0 +1,70 @@
+# Media libraries and their metadata helpers.
+services:
+
+  movies:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: movies
+    # PINNED deliberately; this is the instance guests actually use. Moved from
+    # 10.11.11 to 12.1 on 2026-10-03 after testing a migrated copy: jfa-go 0.6.0
+    # (invites, policy, password-reset PINs) and SSO-Auth 4.0.0.4 both work.
+    # Pre-upgrade backup: ~/jellyfin-backup-10.11.11-2026-10-03. Major bumps
+    # rewrite the DB irreversibly, so test on a copy and back up first.
+    image: lscr.io/linuxserver/jellyfin:12.1ubu2604-ls51
+    environment:
+      TZ: Europe/London
+    volumes:
+      - ${HOME}/.config/movies:/config
+      - ${STORAGE}/data/media/series:/tv
+      - ${STORAGE}/data/media/movies:/movies
+    labels:
+      - "traefik.docker.network=web"
+      - "traefik.enable=true"
+      - "traefik.http.routers.movies.rule=Host(`movies.${DOMAIN}`)"
+      - "traefik.http.services.movies.loadbalancer.server.port=8096"
+      # linuxserver tags: stable releases only. Without this WUD offers ancient
+      # `20201215.17-unstable-ls173` because it sorts higher than 12.1.
+      - 'wud.tag.include=^\d+\.\d+(\.\d+)?ubu\d+-ls\d+$$'
+
+  komga:
+    extends:
+      file: common/base.yml
+      service: app
+    image: gotson/komga:latest
+    container_name: komga
+    volumes:
+      - ${HOME}/.config/komga:/config
+      - ${STORAGE}/comics:/comics
+      - ${STORAGE}/mangas:/mangas
+      - ${STORAGE}/bds:/bds
+    labels:
+      - "traefik.enable=true"
+      # Router for api
+      - "traefik.http.routers.komga.rule=Host(`komga.${DOMAIN}`)"
+
+  komf:
+    extends:
+      file: common/base.yml
+      service: app
+    image: sndxr/komf:latest
+    container_name: komf
+    volumes:
+      - ${HOME}/.config/komf:/config
+
+  calibre:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: calibre
+    image: lscr.io/linuxserver/calibre-web:latest
+    environment:
+      DOCKER_MODS: linuxserver/mods:universal-calibre
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${HOME}/.config/calibre:/config
+      - ${STORAGE}/books:/books
+      - ${STORAGE}/data/torrents/qbittorrent:/downloads
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calibre.rule=Host(`calibre.${DOMAIN}`)"

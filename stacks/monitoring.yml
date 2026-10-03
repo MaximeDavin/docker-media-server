@@ -1,0 +1,275 @@
+# Observability: metrics, uptime, logs, image updates, and the push channel the
+# first three alert through.
+#
+# Nothing here is guest facing. Every router carries oidc-admin@file except
+# ntfy, which cannot - see the comment on that service.
+services:
+
+  # Metrics, history and threshold alerts. The hub holds the database and the
+  # web UI, the agent does the measuring. Two containers even on a single host
+  # because that is the only shape beszel supports.
+  beszel:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: beszel
+    image: henrygd/beszel:0.19.0
+    # Not a linuxserver image: PUID/PGID env vars are ignored, the process runs
+    # as whatever `user:` says, so ~/.config/beszel must be owned by that uid.
+    user: "${PUID}:${PGID}"
+    environment:
+      # Only used to build the links inside alert notifications.
+      - APP_URL=https://beszel.${DOMAIN}
+      # Beszel is pocketbase underneath, so it ships its own user table and
+      # login page - a second account store, which is exactly what Rauthy
+      # exists to avoid. This makes it defer instead: it trusts the email in
+      # this header and logs that user straight in, so arriving through the
+      # gate below is already being logged in here.
+      #
+      # It matches an EXISTING users row by email and does nothing if there is
+      # none - it does not auto-provision - so a new beszel admin is still one
+      # record created by hand in the UI, carrying the same email as their
+      # Rauthy account. Use the same address in both.
+      #
+      # Password login deliberately stays enabled (no DISABLE_PASSWORD_AUTH):
+      # the homepage widget signs in with username/password over
+      # http://beszel:8090, which never passes through Traefik and so never
+      # carries this header.
+      - TRUSTED_AUTH_HEADER=X-Auth-Email
+    volumes:
+      - ${HOME}/.config/beszel/data:/beszel_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.beszel.rule=Host(`beszel.${DOMAIN}`)"
+      - "traefik.http.routers.beszel.middlewares=oidc-admin-identity@file"
+      - "traefik.http.services.beszel.loadbalancer.server.port=8090"
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  beszel-agent:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: beszel-agent
+    # `-alpine` on purpose: it is the only variant shipping smartctl, and
+    # without it the S.M.A.R.T. panel stays empty with no error to explain why.
+    image: henrygd/beszel-agent:0.19.0-alpine
+    # Host networking is what gives the agent the host's real interface stats.
+    # On the bridge it would faithfully report the bridge's traffic instead.
+    network_mode: host
+    # Reading S.M.A.R.T. off the SATA disks needs raw device access. SYS_ADMIN
+    # is only required for NVMe, and there is none in this box.
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      - /dev/sda
+      - /dev/sdb
+      - /dev/sdc
+    environment:
+      # The hub's public key, shown when adding a system in the hub UI. There
+      # is no value for it until the hub has run once - see gatus/README notes.
+      - KEY=${BESZEL_KEY:?start the hub first, then put its key in .env}
+      # Bound to the `web` bridge gateway, not 0.0.0.0 and not a unix socket.
+      #
+      # Not 0.0.0.0 because host networking would put it on the LAN, and the
+      # agent hands out every metric this box has. .1 of the pinned 172.20/16
+      # subnet is the host as containers on `web` see it, so the hub can reach
+      # it and nothing off this machine can.
+      #
+      # Not the unix socket from upstream's example either: the agent creates
+      # it with its own umask (0755) and connecting to a socket needs write
+      # permission, so it only works when the hub also runs as root. It does
+      # not here.
+      - LISTEN=172.20.0.1:45876
+      # Cheap insurance against waking the array every 30 seconds only to ask
+      # how full it is.
+      - DISK_USAGE_CACHE=10m
+      # `smartctl --scan` inside this container types all three disks as
+      # `scsi`, and a scsi-mode read returns an empty attribute table - the
+      # S.M.A.R.T. panel would be present and permanently blank. Forcing `sat`
+      # gets the real ATA attributes (reallocated sectors, power-on hours,
+      # temperature), which are the ones worth alerting on. Verified per disk
+      # with `docker exec beszel-agent smartctl -d sat -A /dev/sdX`.
+      - SMART_DEVICES=/dev/sda:sat,/dev/sdb:sat,/dev/sdc:sat
+    volumes:
+      - ${HOME}/.config/beszel/agent:/var/lib/beszel-agent
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Anything mounted under /extra-filesystems becomes its own disk in the
+      # UI. The two physical members, not the mergerfs pool: the pool is a fuse
+      # union of exactly these two, so charting it as well double counts, and
+      # "pool is full" is just both members being full.
+      - /mnt/disk2:/extra-filesystems/disk2:ro
+      - /mnt/disk3:/extra-filesystems/disk3:ro
+    labels:
+      # Stay on the -alpine variant.
+      - 'wud.tag.include=^\d+\.\d+\.\d+-alpine$$'
+
+  # Uptime, latency and certificate expiry, checked the way a user experiences
+  # it - from outside, through Traefik. Endpoints live in gatus/config.yaml.
+  gatus:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: gatus
+    image: twinproduction/gatus:v5.36.0
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=Europe/Paris
+      # Referenced as ${NTFY_TOKEN} inside config.yaml, which gatus expands
+      # from its own env - so the token stays out of the committed file.
+      - NTFY_TOKEN=${NTFY_TOKEN:?create an ntfy token first, then set in .env}
+      - DOMAIN=${DOMAIN:?set in .env}
+    volumes:
+      - ./gatus/config.yaml:/config/config.yaml:ro
+      - ${HOME}/.config/gatus:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gatus.rule=Host(`gatus.${DOMAIN}`)"
+      - "traefik.http.routers.gatus.middlewares=oidc-admin@file"
+      - "traefik.http.services.gatus.loadbalancer.server.port=8080"
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  # Live container logs in the browser. Stores nothing: what you can read is
+  # whatever the docker json-file driver still holds.
+  dozzle:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: dozzle
+    image: amir20/dozzle:v11.0.1
+    environment:
+      - DOZZLE_NO_ANALYTICS=true
+      # No DOZZLE_AUTH_PROVIDER: oidc-admin@file already decided who gets here,
+      # and a second login would only be a second password to forget. If dozzle
+      # ever needs to know *which* admin is looking, switch this to
+      # forward-proxy and have the plugin forward the claim as a header.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=Host(`logs.${DOMAIN}`)"
+      - "traefik.http.routers.dozzle.middlewares=oidc-admin@file"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  # Which containers have a newer image. Reports only - no auto-update, on
+  # purpose: half this stack runs :latest or :nightly and an unattended pull is
+  # how a working media server becomes a broken one overnight.
+  wud:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: wud
+    image: getwud/wud:9.0.2
+    environment:
+      - WUD_AUTH_ADMIN_USER=${WUD_ADMIN_USER:?set in .env}
+      - WUD_AUTH_ADMIN_PASSWORD=${WUD_ADMIN_PASSWORD:?set in .env}
+      - WUD_STORE_PATH=/store
+      # Once a day at 06:00. Registries rate-limit anonymous manifest reads and
+      # nothing here is urgent enough to poll hourly.
+      - WUD_WATCHER_LOCAL_CRON=0 6 * * *
+      # Docker Hub images default to no digest watching, so every `:latest` and
+      # `:nightly` tag here (organizr, komga, filebrowser, pihole, komf, jfa,
+      # qbittorrent...) would be reported as permanently up to date - the exact
+      # containers most likely to have drifted. Turning it on costs one
+      # manifest HEAD per image per day, nowhere near Hub's anonymous limit.
+      - WUD_WATCHER_LOCAL_WATCHDIGESTDEFAULT=true
+      - WUD_TRIGGER_NTFY_UPDATES_URL=http://ntfy:2586
+      - WUD_TRIGGER_NTFY_UPDATES_TOPIC=homelab-updates
+      - WUD_TRIGGER_NTFY_UPDATES_AUTH_TOKEN=${NTFY_TOKEN}
+      # Lower than the gatus alerts: an available update is information, a dead
+      # service is not.
+      - WUD_TRIGGER_NTFY_UPDATES_PRIORITY=2
+      - WUD_TRIGGER_NTFY_UPDATES_TAGS=whale
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${HOME}/.config/wud:/store
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wud.rule=Host(`updates.${DOMAIN}`)"
+      - "traefik.http.routers.wud.middlewares=oidc-admin@file"
+      - "traefik.http.services.wud.loadbalancer.server.port=3000"
+      - 'wud.tag.include=^\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  # The push channel beszel, gatus and wud all deliver through.
+  #
+  # No oidc middleware, and it is not an oversight: the ntfy phone app speaks
+  # HTTP with a bearer token, not OIDC, so the gate would hand it a Rauthy
+  # login page it cannot render. Access control is ntfy's own instead -
+  # auth-default-access: deny-all in ntfy/server.yml plus one token per
+  # publisher, which is why this is the only service here reachable
+  # unauthenticated at the edge.
+  ntfy:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: ntfy
+    image: binwiederhier/ntfy:v2.28.0
+    command: ["serve"]
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=Europe/Paris
+      - NTFY_BASE_URL=https://ntfy.${DOMAIN}
+    volumes:
+      - ./ntfy/server.yml:/etc/ntfy/server.yml:ro
+      - ${HOME}/.config/ntfy:/var/lib/ntfy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:2586/v1/health | grep -Eo '\"healthy\"\\s*:\\s*true'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ntfy.rule=Host(`ntfy.${DOMAIN}`)"
+      - "traefik.http.services.ntfy.loadbalancer.server.port=2586"
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+    networks:
+      - web
+
+  # Admin dashboard: one page for the whole box. Config lives in
+  # homepage/status/, same shape as the guest portal in stacks/infra.yml, but
+  # behind oidc-admin@file so it is free to show what that one cannot.
+  homepage-status:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: homepage-status
+    image: ghcr.io/gethomepage/homepage:v2.3.0
+    user: "${PUID}:${PGID}"
+    # The docker group, so the socket below is readable no matter what PGID
+    # resolves to. Worth pinning explicitly: PGID is 1500 in .env, 1004 in
+    # /etc/environment and 999 in an interactive shell, and whichever wins
+    # decides whether every container dot on this page renders.
+    group_add:
+      - "999"
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=status.${DOMAIN}
+      - HOMEPAGE_VAR_DOMAIN=${DOMAIN:?set in .env}
+      - HOMEPAGE_VAR_SONARR_KEY=${HOMEPAGE_VAR_SONARR_KEY:?set in .env}
+      - HOMEPAGE_VAR_RADARR_KEY=${HOMEPAGE_VAR_RADARR_KEY:?set in .env}
+      - HOMEPAGE_VAR_PROWLARR_KEY=${HOMEPAGE_VAR_PROWLARR_KEY:?set in .env}
+      - HOMEPAGE_VAR_SEERR_KEY=${HOMEPAGE_VAR_SEERR_KEY:?set in .env}
+      - HOMEPAGE_VAR_JELLYFIN_KEY=${HOMEPAGE_VAR_JELLYFIN_KEY:?set in .env}
+      - HOMEPAGE_VAR_BESZEL_USER=${HOMEPAGE_VAR_BESZEL_USER:?set in .env}
+      - HOMEPAGE_VAR_BESZEL_PASSWORD=${HOMEPAGE_VAR_BESZEL_PASSWORD:?set in .env}
+      - HOMEPAGE_VAR_WUD_USER=${HOMEPAGE_VAR_WUD_USER:?set in .env}
+      - HOMEPAGE_VAR_WUD_PASSWORD=${HOMEPAGE_VAR_WUD_PASSWORD:?set in .env}
+    volumes:
+      - ./homepage/status:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage-status.rule=Host(`status.${DOMAIN}`)"
+      - "traefik.http.routers.homepage-status.middlewares=oidc-admin@file"
+      - "traefik.http.services.homepage-status.loadbalancer.server.port=3000"
+      - 'wud.tag.include=^v\d+\.\d+\.\d+$$'
+    networks:
+      - web

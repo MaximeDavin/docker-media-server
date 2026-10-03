@@ -1,0 +1,123 @@
+# Acquisition, curation and request handling.
+services:
+
+  sonarr:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      DOCKER_MODS: gilbn/theme.park:sonarr
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${HOME}/.config/sonarr:/config
+      - ${STORAGE}/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.${DOMAIN}`)"
+      - "traefik.http.routers.sonarr.middlewares=oidc-admin@file"
+
+  radarr:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:nightly
+    environment:
+      DOCKER_MODS: gilbn/theme.park:radarr
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      # NOTE: `.config2`, not `.config` like every other service. Left as-is
+      # deliberately - this is radarr's live database path.
+      - ${HOME}/.config2/radarr:/config
+      - ${STORAGE}/data:/data
+    labels:
+      - "traefik.enable=true"
+      # Router for api
+      - "traefik.http.routers.radarr.rule=Host(`radarr.${DOMAIN}`)"
+      # Auth
+      - "traefik.http.routers.radarr.middlewares=oidc-admin@file"
+
+  bazarr:
+    extends:
+      file: common/base.yml
+      service: app
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    volumes:
+      - ${HOME}/.config/bazarr:/config
+      - ${STORAGE}/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.${DOMAIN}`)"
+      # Auth
+      - "traefik.http.routers.bazarr.middlewares=oidc-admin@file"
+
+  prowlarr:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:develop
+    volumes:
+      - ${HOME}/.config/prowlarr:/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.middlewares=oidc-admin@file"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+
+  recyclarr:
+    extends:
+      file: common/base.yml
+      service: svc
+    image: ghcr.io/recyclarr/recyclarr:8
+    container_name: recyclarr
+    user: "${PUID}:${PGID}"
+    volumes:
+      - ${HOME}/.config/recyclarr:/config
+    environment:
+      - TZ=Europe/Paris
+    networks:
+      - web
+    labels:
+      # Major-line tag: report new majors only.
+      - 'wud.tag.include=^\d+$$'
+
+  seerr:
+    extends:
+      file: common/base.yml
+      service: app
+    # OIDC preview build (PR #2715, unmerged upstream). Pinned by DIGEST, not by the
+    # `preview-new-oidc` tag, so an unattended pull cannot swap the auth layer.
+    # Rollback: restore ~/.config/seerr-backup-* and set this back to :sha-193d4dc
+    image: ghcr.io/seerr-team/seerr@sha256:6a2a160b878b98d079c8ee6933f58997bb26d68dbcbc789c1a559bc6955db60d
+    init: true
+    container_name: seerr
+    volumes:
+      -  ${HOME}/.config/seerr:/app/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.seerr.rule=Host(`request.${DOMAIN}`)"
+      - "traefik.http.services.seerr.loadbalancer.server.port=5055"
+
+  jfa:
+    extends:
+      file: common/base.yml
+      service: app
+    # jfa-go publishes no version tags, so pin by digest (0.6.0, verified against
+    # Jellyfin 12.1 on 2026-10-03). Keeping `latest` in the reference lets WUD
+    # report when upstream moves it.
+    image: hrfee/jfa-go:latest@sha256:701cfca823f9278b65f4cf7706b0c7f89b3be33e17ca077f11d89dc119e9f307
+    container_name: jfa
+    volumes:
+      - ${HOME}/.config/jfa:/data
+      # Jellyfin drops password-reset files in /config/data; jfa-go watches /jf
+      # for them (password_resets.watch_directory in its config.ini).
+      - ${HOME}/.config/movies/data:/jf
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jfa.rule=Host(`invite.${DOMAIN}`)"
+      - "traefik.http.services.jfa.loadbalancer.server.port=8056"

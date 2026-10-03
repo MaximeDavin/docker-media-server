@@ -1,0 +1,28 @@
+# Admin dashboard. Behind oidc-admin@file, so unlike the guest portal it may
+# show anything: who is streaming, what is downloading, container health.
+title: media-server
+description: Everything, honestly
+
+theme: dark
+color: slate
+headerStyle: boxed
+statusStyle: dot
+
+layout:
+  Monitoring:
+    style: row
+    columns: 4
+  Media:
+    style: row
+    columns: 4
+  Automation:
+    style: row
+    columns: 4
+  Download:
+    style: row
+    columns: 3
+  Infrastructure:
+    style: row
+    columns: 4
+
+hideVersion: true

@@ -1,0 +1,14 @@
+# No `resources` widget on purpose: it would report the homepage container's
+# own view of cpu, memory and disk, not the host's, and beszel already
+# measures the real thing from an agent with host networking.
+- search:
+    provider: duckduckgo
+    target: _blank
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: long
+      timeStyle: short
+      hourCycle: h23
+      locale: fr-FR

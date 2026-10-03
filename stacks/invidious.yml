@@ -1,0 +1,118 @@
+# Invidious frontend + its companion and database.
+# NOTE: invidious-db mounts paths relative to the repo root, so this stack is
+# included with `project_directory: .` (see the root compose file).
+services:
+
+  invidious:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: invidious
+    image: quay.io/invidious/invidious:latest
+    environment:
+      INVIDIOUS_CONFIG: |
+        db:
+          dbname: invidious
+          user: kemal
+          password: ${INVIDIOUS_DB_PASSWORD:?set in .env}
+          host: invidious-db
+          port: 5432
+        check_tables: true
+        # Info logs every /videoplayback request (full signed YouTube URL, ~2KB
+        # a line). Warn keeps errors and drops the firehose.
+        log_level: Warn
+        statistics_enabled: true
+        # The Clipious token router bypasses the OIDC middleware, so anyone
+        # holding INVIDIOUS_TOKEN could otherwise sign up. Existing logins are
+        # unaffected; flip to true briefly to add an account.
+        registration_enabled: false
+        invidious_companion:
+        - private_url: "http://companion:8282/companion"
+        invidious_companion_key: "${INVIDIOUS_COMPANION_KEY:?set in .env}"
+        domain: "invidious.${DOMAIN}"
+        external_port: 443
+        https_only: true
+        captcha_enabled: false
+        hmac_key: "${INVIDIOUS_HMAC_KEY:?set in .env}"
+        admins: ["maxdav"]
+    healthcheck:
+      test: wget -nv --tries=1 --spider http://127.0.0.1:3000/api/v1/stats || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 2
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "3"
+    depends_on:
+      invidious-db:
+        condition: service_healthy
+      companion:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.invidious.rule=Host(`invidious.${DOMAIN}`)"
+      - "traefik.http.routers.invidious.middlewares=oidc-admin@file"
+      - "traefik.http.services.invidious.loadbalancer.server.port=3000"
+      # Clipious (Android) cannot do the cookie redirect flow: it sends a static
+      # token header instead. Higher priority so it wins over the browser router.
+      - "traefik.http.routers.invidious-token.rule=Host(`invidious.${DOMAIN}`) && Header(`X-INVIDIOUS-AUTH`, `${INVIDIOUS_TOKEN:?set_INVIDIOUS_TOKEN_in_.env}`)"
+      - "traefik.http.routers.invidious-token.service=invidious"
+      - "traefik.http.routers.invidious-token.priority=100"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - web
+      - invidious
+
+  companion:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: invidious-companion
+    image: quay.io/invidious/invidious-companion:latest
+    environment:
+       - SERVER_SECRET_KEY=${INVIDIOUS_COMPANION_KEY:?set in .env}
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "4"
+    cap_drop:
+      - ALL
+    read_only: true
+    # No healthcheck override: the image is distroless (no /bin/sh, no wget) and
+    # already declares its own `/thc` probe against 8282. A shell-based test here
+    # fails 100% of the time, which is what made this container permanently
+    # unhealthy and unusable as a depends_on condition.
+    volumes:
+      - companioncache:/var/tmp/youtubei.js:rw
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - invidious
+
+  invidious-db:
+    extends:
+      file: common/base.yml
+      service: svc
+    container_name: invidious-db
+    image: docker.io/library/postgres:14
+    volumes:
+      - invidious:/var/lib/postgresql/data
+      - ./config/sql:/config/sql
+      - ./docker/init-invidious-db.sh:/docker-entrypoint-initdb.d/init-invidious-db.sh
+    environment:
+      POSTGRES_DB: invidious
+      POSTGRES_USER: kemal
+      POSTGRES_PASSWORD: ${INVIDIOUS_DB_PASSWORD:?set in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - invidious
+    labels:
+      # Major-line tag: report new majors only (not 19beta4-trixie & co). A
+      # postgres major needs a dump/restore, never a pull.
+      - 'wud.tag.include=^\d+$$'

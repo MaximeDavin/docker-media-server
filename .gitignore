@@ -1,0 +1,21 @@
+# secrets
+.env
+.env_*
+vpnpassword.txt
+letsencrypt/
+*.pem
+*.key
+acme.json
+
+# local state / junk
+tail
+data/
+scripts/
+test.py
+nginx-proxy/
+
+# runtime logs
+logs/
+
+# local Claude Code settings
+.claude/

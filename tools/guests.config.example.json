@@ -1,0 +1,21 @@
+{
+  "rauthy": {
+    "url": "https://id.example.com/auth/v1",
+    "key_file": "~/.config/rauthy/api-key"
+  },
+  "jellyfin": {
+    "url": "https://movies.example.com",
+    "api_key": "CREATE A DEDICATED KEY: Dashboard -> Advanced -> API Keys"
+  },
+  "seerr": {
+    "db": "~/.config/seerr/db/db.sqlite3"
+  },
+  "komga": {
+    "url": "https://komga.example.com",
+    "user": "OPTIONAL - a Komga admin email",
+    "password": "OPTIONAL - omit the whole komga block to skip Komga"
+  },
+  "protect": [
+    "USERNAME-TO-NEVER-DELETE"
+  ]
+}

@@ -1,0 +1,239 @@
+# Gatus endpoints. Hot-reloaded: editing this file is enough, no restart.
+#
+# Two kinds of check on purpose:
+#   external - the public hostname, so the check exercises DNS, Traefik, TLS
+#              and the OIDC middleware exactly as a user's browser does.
+#   internal - the container name on the `web` network, which answers "is the
+#              app itself alive" without any of the edge in the way. When both
+#              exist for one service, a green internal and a red external says
+#              the problem is the edge, not the app.
+storage:
+  type: sqlite
+  path: /data/gatus.db
+
+ui:
+  title: "Status | ${DOMAIN}"
+  header: "Homelab"
+
+alerting:
+  ntfy:
+    # Container name, not the public URL: no reason to leave the bridge, and
+    # this keeps alerting working when the thing that is broken *is* the edge.
+    url: "http://ntfy:2586"
+    topic: "homelab-alerts"
+    priority: 4
+    token: "${NTFY_TOKEN}"
+    default-alert:
+      enabled: true
+      # Three consecutive failures before shouting. At the 2m interval below
+      # that is ~6 minutes of genuinely down, which filters restarts and
+      # container updates without hiding a real outage for long.
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+
+  # ---- Guest facing -------------------------------------------------------
+  # These are the ones whose breakage someone else notices first. Checked
+  # externally only: what matters is whether a guest can reach them.
+
+  - name: Jellyfin
+    group: Guest facing
+    url: "https://movies.${DOMAIN}/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 2000"
+      # Renewal is automatic; this catches the case where it silently stopped.
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: Seerr
+    group: Guest facing
+    # Unauthenticated status endpoint - returns the running version as JSON.
+    url: "https://request.${DOMAIN}/api/v1/status"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: Komga
+    group: Guest facing
+    url: "https://komga.${DOMAIN}/"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: Calibre
+    group: Guest facing
+    # calibre-web bounces anonymous visitors to its own login form.
+    url: "https://calibre.${DOMAIN}/"
+    interval: 5m
+    conditions:
+      - "[STATUS] == any(200, 302)"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: Portal
+    group: Guest facing
+    url: "https://portal.${DOMAIN}/"
+    interval: 5m
+    conditions:
+      - "[STATUS] == any(200, 302)"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: Portal (homepage)
+    group: Guest facing
+    # Behind oidc-user@file, so an unauthenticated check can only prove that
+    # the route, the certificate and the gate are all alive - the same shape as
+    # the OIDC gate check below, and for the same reason a 200 here would be
+    # the alarming answer.
+    url: "https://home.${DOMAIN}/"
+    interval: 2m
+    conditions:
+      - "[STATUS] == any(302, 401)"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  # ---- Identity -----------------------------------------------------------
+  # Rauthy is load-bearing twice over: guests log into Jellyfin/Komga/Seerr
+  # through it, and since tinyauth was removed it also gates every admin app.
+  # If discovery stops answering, nobody logs into anything.
+
+  - name: Rauthy discovery
+    group: Identity
+    url: "https://id.${DOMAIN}/auth/v1/.well-known/openid-configuration"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].issuer == pat(*${DOMAIN}*)"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: OIDC gate
+    group: Identity
+    # An admin app, requested with no session. A redirect to Rauthy (browser
+    # behaviour) or a 401 (XHR behaviour) both mean the middleware is doing its
+    # job. A 200 here would mean Sonarr, Radarr, qBittorrent and the rest just
+    # became public, which is why this asserts the *absence* of success.
+    url: "https://drive.${DOMAIN}/"
+    interval: 5m
+    conditions:
+      - "[STATUS] == any(302, 401)"
+    alerts:
+      - type: ntfy
+
+  # ---- Applications -------------------------------------------------------
+  # Internal: straight to the container, no edge involved.
+
+  - name: Sonarr
+    group: Applications
+    url: "http://sonarr:8989/ping"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+
+  - name: Radarr
+    group: Applications
+    url: "http://radarr:7878/ping"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+
+  - name: Prowlarr
+    group: Applications
+    url: "http://prowlarr:9696/ping"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+
+  - name: Bazarr
+    group: Applications
+    # No /ping in bazarr; the login redirect is proof enough it is serving.
+    url: "http://bazarr:6767/"
+    interval: 5m
+    conditions:
+      - "[STATUS] == any(200, 302)"
+    alerts:
+      - type: ntfy
+
+  - name: qBittorrent
+    group: Applications
+    # Reached through gluetun because that is where qbittorrent's network
+    # lives, so this is also the VPN container's liveness check: if gluetun
+    # dies or loses its tunnel, this goes red and downloads have stopped.
+    # 403 is qbittorrent refusing an unauthenticated API call - still alive.
+    url: "http://gluetun:8080/api/v2/app/version"
+    interval: 2m
+    conditions:
+      - "[STATUS] == any(200, 403)"
+    alerts:
+      - type: ntfy
+
+  # ---- Infrastructure -----------------------------------------------------
+
+  - name: ntfy
+    group: Infrastructure
+    # The delivery path for every alert in this file, and for beszel's and
+    # wud's. If it is down, gatus cannot tell you that gatus cannot tell you
+    # anything - the red square here is the only signal. A real dead-man's
+    # switch (beszel's HEARTBEAT_URL against an external pinger) is the proper
+    # fix and is not set up yet.
+    url: "http://ntfy:2586/v1/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].healthy == true"
+    alerts:
+      - type: ntfy
+
+  - name: Beszel
+    group: Infrastructure
+    # Internal: externally this router answers 401 by design, which says
+    # nothing about whether the hub is actually healthy.
+    url: "http://beszel:8090/api/health"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+
+  - name: Host resolver
+    group: Infrastructure
+    # NOT pihole, though that is the one you would rather watch. Pihole lives
+    # on the macvlan `lan` network, and macvlan deliberately isolates its
+    # members from the host and from bridge containers, so 192.168.0.113:53
+    # times out from here - verified, not assumed. Checking it directly would
+    # need a macvlan shim interface on the host, which is a host networking
+    # change and belongs in its own commit.
+    #
+    # What this does check is the resolver every container on `web` actually
+    # depends on: docker's embedded DNS forwards to the host, and if this stops
+    # answering, every service in the stack loses name resolution.
+    url: "192.168.0.42"
+    interval: 2m
+    dns:
+      query-name: "${DOMAIN}"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+    alerts:
+      - type: ntfy

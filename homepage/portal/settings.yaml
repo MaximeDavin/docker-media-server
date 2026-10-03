@@ -1,0 +1,33 @@
+# Guest-facing dashboard. Everyone who can log in sees exactly this page, so
+# nothing here may reveal anything one household member should not see about
+# another - no "now playing", no per-user request lists, no torrent names.
+title: {{HOMEPAGE_VAR_DOMAIN}}
+description: Films, series and books at home
+
+# Guests arrive already authenticated by oidc-user@file, so there is no login
+# of our own to land on.
+startUrl: /
+
+theme: dark
+color: slate
+headerStyle: boxed
+statusStyle: dot
+
+layout:
+  Watch:
+    style: row
+    columns: 2
+  Read:
+    style: row
+    columns: 2
+  On the way:
+    style: row
+    columns: 2
+  Get the apps:
+    style: row
+    columns: 3
+
+# Nothing a guest can act on, and the update notice would send them looking for
+# an upgrade button they do not have.
+hideVersion: true
+disableUpdateCheck: true

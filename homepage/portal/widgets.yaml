@@ -1,0 +1,11 @@
+- greeting:
+    text_size: xl
+    text: Bonjour
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: long
+      timeStyle: short
+      hourCycle: h23
+      locale: fr-FR

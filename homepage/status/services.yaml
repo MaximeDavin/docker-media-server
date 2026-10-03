@@ -1,0 +1,173 @@
+# Widgets talk to containers directly (http://name:port) rather than through
+# Traefik: the public hostname would send them into the OIDC gate, and a
+# widget cannot complete a login flow.
+
+- Monitoring:
+    - Beszel:
+        href: https://beszel.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Metrics, disks, S.M.A.R.T.
+        icon: beszel.png
+        server: local
+        container: beszel
+        widget:
+          type: beszel
+          url: http://beszel:8090
+          username: {{HOMEPAGE_VAR_BESZEL_USER}}
+          password: {{HOMEPAGE_VAR_BESZEL_PASSWORD}}
+          # `2` is required for beszel >= 0.9; the default of 1 speaks an API
+          # this hub no longer has.
+          version: 2
+          systemId: media-server
+          fields: ["cpu", "memory", "disk", "network"]
+
+    - Gatus:
+        href: https://gatus.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Uptime and certificates
+        icon: gatus.png
+        server: local
+        container: gatus
+        widget:
+          type: gatus
+          url: http://gatus:8080
+
+    - Dozzle:
+        href: https://logs.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Container logs
+        icon: dozzle.png
+        server: local
+        container: dozzle
+
+    - Updates:
+        href: https://updates.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Newer images available
+        icon: whats-up-docker.png
+        server: local
+        container: wud
+        widget:
+          type: whatsupdocker
+          url: http://wud:3000
+          username: {{HOMEPAGE_VAR_WUD_USER}}
+          password: {{HOMEPAGE_VAR_WUD_PASSWORD}}
+
+- Media:
+    - Jellyfin:
+        href: https://movies.{{HOMEPAGE_VAR_DOMAIN}}
+        description: 10.11 - the one guests use
+        icon: jellyfin.png
+        server: local
+        container: movies
+        widget:
+          type: jellyfin
+          url: http://movies:8096
+          key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}
+          enableBlocks: true
+          enableNowPlaying: true
+
+    - Komga:
+        href: https://komga.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Comics and manga
+        icon: komga.png
+        server: local
+        container: komga
+
+    - Calibre:
+        href: https://calibre.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Books
+        icon: calibre-web.png
+        server: local
+        container: calibre
+
+- Automation:
+    - Sonarr:
+        href: https://sonarr.{{HOMEPAGE_VAR_DOMAIN}}
+        icon: sonarr.png
+        server: local
+        container: sonarr
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: {{HOMEPAGE_VAR_SONARR_KEY}}
+          enableQueue: true
+
+    - Radarr:
+        href: https://radarr.{{HOMEPAGE_VAR_DOMAIN}}
+        icon: radarr.png
+        server: local
+        container: radarr
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: {{HOMEPAGE_VAR_RADARR_KEY}}
+          enableQueue: true
+
+    - Prowlarr:
+        href: https://prowlarr.{{HOMEPAGE_VAR_DOMAIN}}
+        icon: prowlarr.png
+        server: local
+        container: prowlarr
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: {{HOMEPAGE_VAR_PROWLARR_KEY}}
+
+    - Seerr:
+        href: https://request.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Requests
+        icon: overseerr.png
+        server: local
+        container: seerr
+        widget:
+          type: seerr
+          url: http://seerr:5055
+          key: {{HOMEPAGE_VAR_SEERR_KEY}}
+
+- Download:
+    # No qbittorrent widget: its WebUI credentials are not in this repo, and
+    # both clients sit inside gluetun's network namespace anyway. The container
+    # dots below are the honest signal - gluetun red means both are offline.
+    - gluetun:
+        href: https://qbittorrent.{{HOMEPAGE_VAR_DOMAIN}}
+        description: VPN - qbittorrent lives in here
+        icon: gluetun.png
+        server: local
+        container: gluetun
+
+    - qBittorrent:
+        href: https://qbittorrent.{{HOMEPAGE_VAR_DOMAIN}}
+        icon: qbittorrent.png
+        server: local
+        container: qbittorrent
+
+    - Bazarr:
+        href: https://bazarr.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Subtitles
+        icon: bazarr.png
+        server: local
+        container: bazarr
+
+- Infrastructure:
+    - Traefik:
+        description: Edge, TLS, OIDC gate
+        icon: traefik.png
+        server: local
+        container: traefik
+
+    - Rauthy:
+        href: https://id.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Identity - everything logs in here
+        icon: openid.png
+        server: local
+        container: rauthy
+
+    - Pi-hole:
+        description: DNS and DHCP - on the macvlan
+        icon: pi-hole.png
+        server: local
+        container: pihole
+
+    - ntfy:
+        href: https://ntfy.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Where alerts come from
+        icon: ntfy.png
+        server: local
+        container: ntfy

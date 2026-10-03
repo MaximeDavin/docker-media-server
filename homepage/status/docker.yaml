@@ -1,0 +1,5 @@
+# Read-only socket, same as dozzle and wud already have. It powers the
+# container status dot and the cpu/memory line on each tile below; homepage
+# never writes through it.
+local:
+  socket: /var/run/docker.sock
