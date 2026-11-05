@@ -48,6 +48,14 @@ http:
             Url: "https://id.{{ env "DOMAIN" }}/auth/v1"
             ClientId: "traefik"
             ClientSecret: "${OIDC_CLIENT_SECRET}"
+            # Renew only once the access token has actually expired. The plugin
+            # default (0.75) renews early, and Rauthy stamps its refresh
+            # tokens with an `nbf` just before the access token's expiry, so
+            # an early renewal is refused ("Token is not valid yet" in rauthy's
+            # log) and the plugin drops the session. A page load recovers via
+            # redirect; XHR does not - Invidious' player just spins on 401s,
+            # 22.5 minutes (75% of 30) after the last login or renewal.
+            TokenRenewalThreshold: 1.0
           # `groups` is what the admin rule below asserts on. Rauthy only puts
           # the claim in the token when the client is allowed that scope AND
           # asks for it, so removing it here silently breaks oidc-admin.
