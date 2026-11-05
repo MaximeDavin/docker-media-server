@@ -8,7 +8,7 @@ Self-hosted media server on a single Docker host, behind Traefik with Rauthy (OI
 |---|---|
 | `infra` | traefik, rauthy, pihole, cloudflare-ddns, homepage portal |
 | `media` | jellyfin, komga, komf, calibre |
-| `arr` | sonarr, radarr, bazarr, prowlarr, recyclarr, seerr, jfa-go |
+| `arr` | sonarr, radarr, bazarr, prowlarr, recyclarr, cleanuparr, seerr, jfa-go |
 | `download` | gluetun, qbittorrent |
 | `invidious` | invidious, companion, postgres |
 | `apps` | filebrowser, babybuddy |

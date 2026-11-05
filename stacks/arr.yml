@@ -86,6 +86,29 @@ services:
       # Major-line tag: report new majors only.
       - 'wud.tag.include=^\d+$$'
 
+  # Queue janitor for the *arrs: strikes stalled/slow downloads and torrents that
+  # finish with nothing importable (e.g. a fake release whose only payload is an
+  # .exe), removes them from qBittorrent, blocklists them and triggers a re-search.
+  cleanuparr:
+    extends:
+      file: common/base.yml
+      service: app
+    container_name: cleanuparr
+    image: ghcr.io/cleanuparr/cleanuparr:2
+    environment:
+      PORT: 11011
+    volumes:
+      - ${HOME}/.config/cleanuparr:/config
+      # Same /data path qBittorrent sees, so hardlink detection lines up.
+      - ${STORAGE}/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cleanuparr.rule=Host(`cleanuparr.${DOMAIN}`)"
+      - "traefik.http.routers.cleanuparr.middlewares=oidc-admin@file"
+      - "traefik.http.services.cleanuparr.loadbalancer.server.port=11011"
+      # Major-line tag: report new majors only.
+      - 'wud.tag.include=^\d+$$'
+
   seerr:
     extends:
       file: common/base.yml
