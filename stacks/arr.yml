@@ -116,7 +116,7 @@ services:
     # OIDC preview build (PR #2715, unmerged upstream). Pinned by DIGEST, not by the
     # `preview-new-oidc` tag, so an unattended pull cannot swap the auth layer.
     # Rollback: restore ~/.config/seerr-backup-* and set this back to :sha-193d4dc
-    image: ghcr.io/seerr-team/seerr@sha256:6a2a160b878b98d079c8ee6933f58997bb26d68dbcbc789c1a559bc6955db60d
+    image: ghcr.io/seerr-team/seerr@sha256:d8fab675b55ad293ded98fd71efcfd46054cbad9746534ae1cc4794a88c0b3be
     init: true
     container_name: seerr
     volumes:
