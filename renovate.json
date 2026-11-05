@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Bumps pinned image tags (tier 1 of the tag policy in docker-compose.yml). Floating tags are updated on the host by tools/update.sh, not here.",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Europe/Paris",
+  "docker-compose": {
+    "managerFilePatterns": [
+      "/(^|/)stacks/[^/]+\\.ya?ml$/"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Minor, patch and digest bumps merge straight to main; the nightly update deploys them. No CI here, so there are no checks to wait for.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pinDigest"
+      ],
+      "automerge": true,
+      "automergeType": "branch",
+      "ignoreTests": true
+    },
+    {
+      "description": "Majors wait for a human: the policy is to test them on a copy with a backup first.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "major"
+      ]
+    },
+    {
+      "description": "0.x projects break in minors (rauthy: config renames and migrations; beszel). Treat them like majors.",
+      "matchCurrentVersion": "/^v?0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": false,
+      "labels": [
+        "major"
+      ]
+    },
+    {
+      "description": "linuxserver tags look like 12.1ubu2604-ls51.",
+      "matchPackageNames": [
+        "lscr.io/linuxserver/jellyfin"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)(\\.(?<patch>\\d+))?ubu(?<compatibility>\\d+)-ls(?<build>\\d+)$"
+    },
+    {
+      "description": "Jellyfin minors carry one-way database migrations (10.10 -> 10.11 did).",
+      "matchPackageNames": [
+        "lscr.io/linuxserver/jellyfin"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": false,
+      "labels": [
+        "major"
+      ]
+    }
+  ]
+}

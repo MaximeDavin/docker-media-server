@@ -157,9 +157,11 @@ services:
     networks:
       - web
 
-  # Which containers have a newer image. Reports only - no auto-update, on
-  # purpose: half this stack runs :latest or :nightly and an unattended pull is
-  # how a working media server becomes a broken one overnight.
+  # Which containers have a newer image. Reports only: updates are applied by
+  # tools/update.sh (snapshot first, compose-aware), not by a WUD trigger. A
+  # WUD-recreated gluetun would strand qbittorrent in its old network
+  # namespace; compose recreates the dependents with it. Runs after the 04:00
+  # update, so what it reports is what is still waiting - majors, mostly.
   wud:
     extends:
       file: common/base.yml

@@ -42,3 +42,19 @@ forgotten.
 5. **Optional**: a tile in `homepage/portal/services.yaml` (guest-facing) or
    `homepage/status/services.yaml` (admin), and a health check in
    `gatus/config.yaml`. Update the stack table in `README.md`.
+
+## Updates
+
+Unattended, in two halves: Renovate (`renovate.json`) bumps pinned tags in
+git, and `tools/update.sh` (timer in `tools/systemd/`, 04:00) deploys - restic
+snapshot of `~/.config` and `.env` to `/mnt/storage/backups/restic`, `git pull
+--ff-only`, `docker compose pull`, `up -d`. Consequences:
+
+- Don't leave uncommitted or unpushed edits on the server; the nightly
+  `git pull --ff-only` fails on a diverged checkout and nothing updates (it
+  alerts on `homelab-alerts`).
+- A new pinned image needs no extra step: Renovate finds it in `stacks/*.yml`,
+  and 0.x minors are held back automatically. If it has one-way migrations in
+  minors, add a rule like jellyfin's in `renovate.json` so it is not
+  auto-merged.
+- Don't add a WUD auto-update trigger; see the comment on `wud`.

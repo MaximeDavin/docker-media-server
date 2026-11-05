@@ -1,0 +1,15 @@
+# Install:
+#   sudo ln -s /home/max/docker-media-server/tools/systemd/media-update.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now media-update.timer
+# Logs: journalctl -u media-update
+[Unit]
+Description=Nightly media server update
+
+[Timer]
+# Before WUD's 06:00 check, so its report reflects what is left over.
+OnCalendar=*-*-* 04:00
+# Catch up after the box was off at 04:00.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

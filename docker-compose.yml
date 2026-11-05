@@ -13,6 +13,10 @@
 #      postgres:14), otherwise `latest`.
 #   3. nightly/develop only by choice (radarr, prowlarr are deliberate).
 #   4. Always an explicit tag - a bare image name is `latest` in disguise.
+# Updates are unattended. Renovate (renovate.json) bumps pinned tags in git -
+# minor/patch merge on their own, majors and 0.x minors wait for a human - and
+# tools/update.sh deploys nightly at 04:00: restic snapshot of ~/.config, git
+# pull, compose pull, up -d. That pull is also what moves the floating tags.
 # WUD (stacks/monitoring.yml) only reports. Every non-`latest` tag carries a
 # `wud.tag.include` regex for the stable release format; without it WUD sorts
 # betas and ancient unstable builds as "newer". Word tags (latest, release,
