@@ -21,3 +21,5 @@ Secrets and host-specific values (`DOMAIN`, `PUID`, API keys, tokens…) live in
 ```sh
 docker compose up -d
 ```
+
+Adding a service involves steps outside this repo (Cloudflare DNS record, Rauthy redirect URIs); see the checklist in `CLAUDE.md`.

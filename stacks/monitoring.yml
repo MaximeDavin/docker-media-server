@@ -198,7 +198,10 @@ services:
     networks:
       - web
 
-  # The push channel beszel, gatus and wud all deliver through.
+  # The push channel beszel, gatus and wud all deliver through, and so do
+  # seerr (topic media) and sonarr/radarr/prowlarr (health, homelab-alerts),
+  # configured in their own UIs. Every publisher is the `alerts` user with its
+  # own labelled token (`ntfy token list alerts`), so one can be revoked alone.
   #
   # No oidc middleware, and it is not an oversight: the ntfy phone app speaks
   # HTTP with a bearer token, not OIDC, so the gate would hand it a Rauthy
