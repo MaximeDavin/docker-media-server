@@ -139,7 +139,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: dozzle
-    image: amir20/dozzle:v11.0.1
+    image: amir20/dozzle:v11.4.1
     environment:
       - DOZZLE_NO_ANALYTICS=true
       # No DOZZLE_AUTH_PROVIDER: oidc-admin@file already decided who gets here,
