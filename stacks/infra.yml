@@ -111,7 +111,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: homepage
-    image: ghcr.io/gethomepage/homepage:v2.3.0
+    image: ghcr.io/gethomepage/homepage:v2.7.0
     user: "${PUID}:${PGID}"
     environment:
       # Refuses requests whose Host header is not listed - homepage's own
