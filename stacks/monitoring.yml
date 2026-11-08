@@ -167,7 +167,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: wud
-    image: getwud/wud:9.0.2
+    image: getwud/wud:9.8.0
     environment:
       - WUD_AUTH_ADMIN_USER=${WUD_ADMIN_USER:?set in .env}
       - WUD_AUTH_ADMIN_PASSWORD=${WUD_ADMIN_PASSWORD:?set in .env}
