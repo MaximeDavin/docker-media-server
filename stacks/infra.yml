@@ -71,7 +71,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: rauthy
-    image: ghcr.io/sebadob/rauthy:0.36.2
+    image: ghcr.io/sebadob/rauthy:0.37.2
     user: "1000:1004"
     volumes:
       - ${HOME}/.config/rauthy/config.toml:/app/config.toml:ro
