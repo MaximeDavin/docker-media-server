@@ -5,7 +5,7 @@ services:
     extends:
       file: common/base.yml
       service: svc
-    image: "traefik:v3.7.17"
+    image: "traefik:v3.7.18"
     container_name: "traefik"
     command:
       - "--log.level=INFO"
