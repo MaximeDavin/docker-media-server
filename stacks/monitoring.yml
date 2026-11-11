@@ -247,7 +247,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: homepage-status
-    image: ghcr.io/gethomepage/homepage:v2.7.0
+    image: ghcr.io/gethomepage/homepage:v2.8.0
     user: "${PUID}:${PGID}"
     # The docker group, so the socket below is readable no matter what PGID
     # resolves to. Worth pinning explicitly: PGID is 1500 in .env, 1004 in
