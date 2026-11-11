@@ -11,7 +11,7 @@ services:
     # (invites, policy, password-reset PINs) and SSO-Auth 4.0.0.4 both work.
     # Pre-upgrade backup: ~/jellyfin-backup-10.11.11-2026-10-03. Major bumps
     # rewrite the DB irreversibly, so test on a copy and back up first.
-    image: lscr.io/linuxserver/jellyfin:12.1ubu2604-ls51
+    image: lscr.io/linuxserver/jellyfin:12.4ubu2604-ls59
     environment:
       TZ: Europe/London
     volumes:
