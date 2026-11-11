@@ -142,7 +142,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: pihole
-    image: pihole/pihole:2026.07.2
+    image: pihole/pihole:2026.11.0
     # No `ports:` here on purpose: this container is macvlan-only, so Docker
     # ignores port publishing entirely. It reaches the LAN on 192.168.0.113
     # directly, which is the whole reason it is on `lan`.
