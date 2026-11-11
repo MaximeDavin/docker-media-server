@@ -63,6 +63,16 @@
       "labels": [
         "major"
       ]
+    },
+    {
+      "description": "A postgres major can't read the old data directory; it needs a dump/restore, not a tag bump. Upgrade by hand (WUD still reports new majors).",
+      "matchPackageNames": [
+        "docker.io/library/postgres"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
     }
   ]
 }
