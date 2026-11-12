@@ -54,7 +54,7 @@ services:
     container_name: beszel-agent
     # `-alpine` on purpose: it is the only variant shipping smartctl, and
     # without it the S.M.A.R.T. panel stays empty with no error to explain why.
-    image: henrygd/beszel-agent:0.21.1-alpine
+    image: henrygd/beszel-agent:0.21.2-alpine
     # Host networking is what gives the agent the host's real interface stats.
     # On the bridge it would faithfully report the bridge's traffic instead.
     network_mode: host
