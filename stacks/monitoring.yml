@@ -112,7 +112,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: gatus
-    image: twinproduction/gatus:v5.36.0
+    image: twinproduction/gatus:v5.38.0
     user: "${PUID}:${PGID}"
     environment:
       - TZ=Europe/Paris
