@@ -13,7 +13,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: beszel
-    image: henrygd/beszel:0.21.1
+    image: henrygd/beszel:0.21.2
     # Not a linuxserver image: PUID/PGID env vars are ignored, the process runs
     # as whatever `user:` says, so ~/.config/beszel must be owned by that uid.
     user: "${PUID}:${PGID}"
