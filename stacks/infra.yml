@@ -164,7 +164,7 @@ services:
     extends:
       file: common/base.yml
       service: svc
-    image: timothyjmiller/cloudflare-ddns:2.0.2
+    image: timothyjmiller/cloudflare-ddns:2.3.1
     container_name: cloudflare-ddns
     environment:
       - PUID=${PUID}
