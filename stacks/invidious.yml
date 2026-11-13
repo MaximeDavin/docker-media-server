@@ -97,7 +97,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: invidious-db
-    image: docker.io/library/postgres:14
+    image: docker.io/library/postgres:18
     volumes:
       - invidious:/var/lib/postgresql/data
       - ./config/sql:/config/sql
