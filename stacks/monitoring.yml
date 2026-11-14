@@ -216,7 +216,7 @@ services:
       file: common/base.yml
       service: svc
     container_name: ntfy
-    image: binwiederhier/ntfy:v2.37.2
+    image: binwiederhier/ntfy:v2.38.0
     command: ["serve"]
     user: "${PUID}:${PGID}"
     environment:
