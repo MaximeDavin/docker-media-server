@@ -38,6 +38,7 @@ services:
       - ${STORAGE}/comics:/comics
       - ${STORAGE}/mangas:/mangas
       - ${STORAGE}/bds:/bds
+      - ${STORAGE}/books:/books:ro
     labels:
       - "traefik.enable=true"
       # Router for api
