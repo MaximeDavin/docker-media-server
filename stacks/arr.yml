@@ -73,7 +73,7 @@ services:
     extends:
       file: common/base.yml
       service: svc
-    image: ghcr.io/recyclarr/recyclarr:8
+    image: ghcr.io/recyclarr/recyclarr:9
     container_name: recyclarr
     user: "${PUID}:${PGID}"
     volumes:
